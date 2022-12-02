@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
 	"strings"
 )
 
 var (
 	videoFile     []string // 视频文件
 	fileNum       int      // 视频文件数量
-	totalDuration int      // 总时长
+	totalDuration uint32   // 总时长
 )
 
 func main() {
@@ -48,7 +47,7 @@ func main() {
 	// 已处理视频个数
 	var videoOkNum int
 	for _, v := range videoList {
-		duration, err := GetMP4Duration(v)
+		duration := GetMP4Duration(v)
 		if err != nil {
 			panic(err)
 		}
@@ -56,26 +55,18 @@ func main() {
 		videoOkNum++
 
 		// datetime转换为秒
-		datetime := strings.Split(duration, ":")
 		// fmt.Println("视频时长:", duration)
-		if duration == "" {
-			// fmt.Println("视频时长为0, 跳过")
+		if duration == 0 {
+			fmt.Println("视频时长为0, 跳过")
 			continue
 		}
-		hour := strToint(datetime[0])
-		minute := strToint(datetime[1])
-		second := strToint(datetime[2])
-		totalDuration += hour*3600 + minute*60 + second
+		totalDuration += duration
 
 		fmt.Printf("视频总数: %d, 已处理: %d \n", len(videoList), videoOkNum)
+		// fmt.Printf("当前时长为1: %s ------ \n", IntToTime(int(totalDuration)))
+		// fmt.Printf("当前时长为2: %d ------ \n", totalDuration)
 	}
-	fmt.Println("总时长为:", ResolveTime(uint32(totalDuration)))
-}
-
-// string转int
-func strToint(str string) int {
-	i, _ := strconv.Atoi(str)
-	return i
+	fmt.Println("总时长为:", IntToTime(int(totalDuration)))
 }
 
 // 递归查询文件夹下的视频文件
@@ -118,7 +109,7 @@ type BoxHeader struct {
 }
 
 //filePath 视频地址
-func GetMP4Duration(filePath string) (duration string, err error) {
+func GetMP4Duration(filePath string) uint32 {
 	file, err := os.Open(filePath)
 	if err != nil {
 		panic(err)
@@ -140,7 +131,7 @@ func GetMP4Duration(filePath string) (duration string, err error) {
 	for {
 		_, err = file.ReadAt(info, offset)
 		if err != nil {
-			return
+			return 0
 		}
 		boxHeader = getHeaderBoxInfo(info)
 		fourccType := getFourccType(boxHeader)
@@ -160,14 +151,14 @@ func GetMP4Duration(filePath string) (duration string, err error) {
 	moveStartBytes := make([]byte, 0x100)
 	_, err = file.ReadAt(moveStartBytes, offset)
 	if err != nil {
-		return
+		return 0
 	}
 	// 定义timeScale与Duration偏移
 	timeScaleOffset := 0x1C
 	durationOffset := 0x20
 	timeScale := binary.BigEndian.Uint32(moveStartBytes[timeScaleOffset : timeScaleOffset+4])
 	Duration := binary.BigEndian.Uint32(moveStartBytes[durationOffset : durationOffset+4])
-	return ResolveTime(Duration / timeScale), nil
+	return Duration / timeScale
 }
 
 // getHeaderBoxInfo 获取头信息
@@ -183,28 +174,12 @@ func getFourccType(boxHeader BoxHeader) (fourccType string) {
 	return
 }
 
-// ResolveTime 将秒转成时分秒格式
-func ResolveTime(seconds uint32) string {
-	var (
-		h, m, s string
-	)
-	var day = seconds / (24 * 3600)
-	hour := (seconds - day*3600*24) / 3600
-	minute := (seconds - day*24*3600 - hour*3600) / 60
-	second := seconds - day*24*3600 - hour*3600 - minute*60
-	h = strconv.Itoa(int(hour))
-	if hour < 10 {
-		h = "0" + strconv.Itoa(int(hour))
-	}
-	m = strconv.Itoa(int(minute))
-	if minute < 10 {
-		m = "0" + strconv.Itoa(int(minute))
-	}
-	s = strconv.Itoa(int(second))
-	if second < 10 {
-		s = "0" + strconv.Itoa(int(second))
-	}
-	return fmt.Sprintf("%s:%s:%s", h, m, s)
+// int转时分秒
+func IntToTime(second int) string {
+	hour := second / 3600
+	minute := second % 3600 / 60
+	second = second % 60
+	return fmt.Sprintf("%02d:%02d:%02d", hour, minute, second)
 }
 
 // 代码参考： https://blog.csdn.net/weixin_42141510/article/details/121513683
